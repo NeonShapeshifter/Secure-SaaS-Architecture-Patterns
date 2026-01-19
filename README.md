@@ -1,6 +1,8 @@
 # Secure SaaS Architecture Patterns
 
-This repository demonstrates advanced security patterns implemented for a multi-tenant SaaS platform. 
+![CI Status](https://github.com/NeonShapeshifter/security-portfolio-showcase/actions/workflows/secure-saas-ci-cd.yml/badge.svg)
+
+Production-Ready Security Patterns for Modern SaaS Architectures. 
 The focus is on **Defense in Depth**, **Identity Isolation**, and **Resilient Authentication**.
 
 ## 🛡️ Architecture Highlights
