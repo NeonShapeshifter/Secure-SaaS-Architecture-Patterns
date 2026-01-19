@@ -1,0 +1,89 @@
+name: Full Stack CI/CD Pipeline Pattern
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # --- CI STAGE: Verification ---
+  verify:
+    name: Quality Assurance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Static Analysis (Lint & Types)
+        run: |
+          npm run lint
+          npm run typecheck
+
+      - name: Unit & Integration Tests
+        run: npm run test
+
+  # --- CD STAGE: Build & Release ---
+  deploy:
+    name: Build & Release
+    needs: verify
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      RELEASE_VERSION: ${{ github.sha }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Environment Detection
+        id: sentry_env
+        run: |
+          if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+            echo "environment=production" >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=staging" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Initialize Sentry Release
+        run: |
+          npx sentry-cli releases new "$RELEASE_VERSION"
+          npx sentry-cli releases set-commits "$RELEASE_VERSION" --auto
+
+      - name: Build & Source Maps
+        env:
+          NODE_ENV: production
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT_BACKEND }}
+          SENTRY_RELEASE: ${{ env.RELEASE_VERSION }}
+          SENTRY_ENVIRONMENT: ${{ steps.sentry_env.outputs.environment }}
+        run: |
+          npm run build
+          npx sentry-cli sourcemaps upload --release="$RELEASE_VERSION" dist/
+
+      - name: Finalize Release
+        run: |
+          npx sentry-cli releases finalize "$RELEASE_VERSION"
+          npx sentry-cli releases deploys "$RELEASE_VERSION" new -e ${{ steps.sentry_env.outputs.environment }}
